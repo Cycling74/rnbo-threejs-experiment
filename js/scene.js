@@ -34,6 +34,7 @@ ground.addToScene(scene);
 drawables.push(ground);
 
 const clouds = new Clouds(camera);
+clouds.touches = false;
 clouds.addToScene(scene);
 drawables.push(clouds);
 
@@ -76,12 +77,9 @@ sky.addEventListener('pointermove', (event) => {
 
 sky.addEventListener('pointerdown', (event) => {
     const { position } = event;
-    const userData = {
-        transportIndex: getTransportTime() % 16,
-    }
 
     if (getActive()) {
-        const flock = birds.spawnBirdsAtPosition(scene, position, userData);
+        const flock = birds.spawnBirdsAtPosition(scene, position);
     }
 });
 
@@ -179,7 +177,7 @@ window.addEventListener('pointerdown', async (event) => {
     }
 
     if (!handlingEvent) {
-        await start();  
+        await start();
     }
 });
 
@@ -209,6 +207,16 @@ function handleKeyEvent(event, direction) {
 // Start animation
 animate();
 
+function setSeason(season) {
+    if (season === "summer") {
+        sky.season = 0.0;
+        ground.season = 0.0;
+    } else if (season === "autumn") {
+        sky.season = 1.0;
+        ground.season = 1.0;
+    }
+}
+
 // Create the synthesizers
 createSynthesizers().then(() => {
     subscribeToSynthesizer('drums', (event) => {
@@ -223,16 +231,29 @@ createSynthesizers().then(() => {
             mountains.setSaturation(row, 1.0); // Set saturation for the corresponding mountain
         }
     });
+
+    subscribeToSynthesizer('pad', (event) => {
+        console.log(event);
+        if (event.data[0] === 144 && event.data[1] === 59) {
+            setSeason("autumn");
+        } else if (event.data[0] === 144 && event.data[1] === 64) {
+            setSeason("summer");
+        }
+    });
 });
 
 subscribeToSynthesizer('transport', (time, nextQuantizedTime) => {
     let events = [];
-    // birdFlocks.forEach((flock) => {
-    //     if (flock.userData.transportIndex === time % 16) {
-    //         flock.userData.highlight = 1.0; // Highlight the flock
-    //         events.push(...createArpEvents(flock.userData.noteIndex, 65, nextQuantizedTime));
-    //     }
-    // });
+    let sortedBirds = birds.sortedBirds;
+    if (sortedBirds.length === 0) {
+        return events; // No birds to highlight
+    }
+    if (time % 2 !== 0) {
+        return events; // Only highlight every second beat
+    }
+    let index = (time / 2) % sortedBirds.length;
+    sortedBirds[index].userData.highlight = 1.0; // Highlight the bird
+    events.push(...createArpEvents(sortedBirds[index].userData.noteIndex, 65, nextQuantizedTime));
     return events;
 }); 
 

@@ -51,10 +51,10 @@ export class Sun extends Drawable {
         
         // Glow effect using multiple transparent spheres
         const glowLayers = [
-            { radius: 18, color: 0xffeb3b, opacity: 0.3 },
-            { radius: 22, color: 0xffc107, opacity: 0.2 },
-            { radius: 28, color: 0xff9800, opacity: 0.15 },
-            { radius: 35, color: 0xff6f00, opacity: 0.1 }
+            { radius: 18, color: 0xffeb3b, opacity: 0.5 },
+            { radius: 22, color: 0xffc107, opacity: 0.4 },
+            { radius: 28, color: 0xff9800, opacity: 0.3 },
+            { radius: 35, color: 0xff6f00, opacity: 0.2 }
         ];
         
         glowLayers.forEach(layer => {

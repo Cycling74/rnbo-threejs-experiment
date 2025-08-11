@@ -1,4 +1,15 @@
 export class Drawable {
+
+    _touches = true;
+
+    get touches() {
+        return this._touches;
+    }
+
+    set touches(value) {
+        this._touches = value;
+    }
+
     constructor() {
         this.group = new THREE.Group();
         this.eventHandlers = {};
@@ -16,6 +27,8 @@ export class Drawable {
     }
 
     bubbleEvent(event, data) {
+
+        if (!this._touches) return null;
 
         const { mouse, raycaster } = event;
         const intersects = raycaster.intersectObjects(this.group.children, true);

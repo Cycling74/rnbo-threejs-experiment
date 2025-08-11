@@ -5,6 +5,11 @@ export class Birds extends Drawable {
         super();
 
         this.birdFlocks = [];
+        this.sortedBirdFlocks = [];
+    }
+
+    get sortedBirds() {
+        return this.sortedBirdFlocks;
     }
 
     // Bird geometry - simple V shape
@@ -57,6 +62,9 @@ export class Birds extends Drawable {
     // Create a flock of birds
     createBirdFlock(position, userData, flockSize = 3) {
         const flock = new THREE.Group();
+
+        const noteIndex = Math.round(Math.abs(position.y * 12 / 300)) % 12;
+        console.log(`Creating flock at position: ${position.x}, ${position.y} with note index: ${noteIndex}`);
         
         // Flock movement data
         flock.userData = Object.assign({
@@ -65,7 +73,7 @@ export class Birds extends Drawable {
             age: 0,
             maxAge: 15 + Math.random() * 10, // Seconds before despawning
             birds: [],
-            noteIndex: Math.floor(Math.random() * 8),
+            noteIndex, // Example note index based on position
             highlight: 1
         }, userData);
         
@@ -100,6 +108,7 @@ export class Birds extends Drawable {
             if (flock.userData.age > flock.userData.maxAge) {
                 this.group.remove(flock);
                 this.birdFlocks.splice(flockIndex, 1);
+                
                 return;
             }
             
@@ -133,6 +142,8 @@ export class Birds extends Drawable {
                 bird.position.add(centerOffset);
             });
         });
+
+        this.sortedBirdFlocks = this.getSortedBirds(); // Update sorted list
     }
 
     // Spawn birds at a world position
@@ -144,11 +155,21 @@ export class Birds extends Drawable {
         spawnPosition.z += 10; // Start further away
         
         const flock = this.createBirdFlock(spawnPosition, userData);
+        flock.renderOrder = 1; // Ensure birds render on top of other elements
         this.group.add(flock);
         this.birdFlocks.push(flock);
-        
-        console.log(`Created flock with ${flock.userData.birds.length} birds`);
+        this.sortedBirdFlocks = this.getSortedBirds(); // Update sorted list
 
         return flock;
+    }
+
+    getSortedBirds() {
+        // Sort birds by their distance from the camera
+        return this.birdFlocks.slice()
+            .sort((a, b) => {
+                const aDistance = a.position.x;
+                const bDistance = b.position.x;
+                return aDistance - bDistance;
+            });
     }
 }

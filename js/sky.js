@@ -7,9 +7,11 @@ export class Sky extends Drawable {
     _saturationTarget = 0.0;
     _active = false;
     _hovered = false;
+    _season = 0.0;
+    _targetSeason = 0.0;
     _sunPosition = new THREE.Vector2(0.0, 0.0);
 
-    _colors = [
+    _summerColors = [
         {
             uniform: 'u_center_color',
             base: new THREE.Color(0.6, 0.8, 1.0)
@@ -24,9 +26,20 @@ export class Sky extends Drawable {
         }
     ];
 
-    _centerColor = new THREE.Color(0.6, 0.8, 1.0);
-    _middleColor = new THREE.Color(0.5, 0.7, 1.0);
-    _edgeColor = new THREE.Color(0.2, 0.3, 0.6);
+    _fallColors = [
+        {
+            uniform: 'u_center_color',
+            base: new THREE.Color(1.0, 0.6, 0.4)
+        },
+        {
+            uniform: 'u_middle_color',
+            base: new THREE.Color(1.0, 0.5, 0.3)
+        },
+        {
+            uniform: 'u_edge_color',
+            base: new THREE.Color(0.6, 0.2, 0.1)
+        }
+    ];
 
     get active() {
         return this._active;
@@ -56,6 +69,10 @@ export class Sky extends Drawable {
         } else {
             console.warn('Invalid sun position type. Expected THREE.Vector2 or THREE.Vector3.');
         }
+    }
+
+    set season(value) {
+        this._targetSeason = THREE.MathUtils.clamp(value, 0.0, 1.0);
     }
 
     constructor() {
@@ -90,16 +107,17 @@ export class Sky extends Drawable {
         this.sky.material.uniforms.u_time.value += deltaTime;
         this.sky.material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
 
-        this._colors.forEach((colorInfo) => {
+        this._summerColors.forEach((colorInfo, index) => {
             const { uniform, base } = colorInfo;
+            const interpColor = base.clone().lerp(this._fallColors[index].base, this._season);
             const hsl = {};
-            base.getHSL(hsl);
+            interpColor.getHSL(hsl);
             const sat = THREE.MathUtils.lerp(0, hsl.s, this._saturation);
-            const newColor = new THREE.Color();
-            newColor.setHSL(hsl.h, sat, hsl.l);
-            this.sky.material.uniforms[uniform].value = newColor;
+            interpColor.setHSL(hsl.h, sat, hsl.l);
+            this.sky.material.uniforms[uniform].value = interpColor;
         });
 
         this._saturation += (this._saturationTarget - this._saturation) * 0.05;
+        this._season += (this._targetSeason - this._season) * 0.03;
     }
 }

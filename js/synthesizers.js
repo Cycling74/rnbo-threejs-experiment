@@ -24,8 +24,8 @@ let namedSynths = {};
 let scaleNotes = [69, 71, 72, 76, 77, 81, 83, 84, 88, 89];
 let quantizedNoteEvents = [];
 let transportTime = 0;
-let loop = null;
 let active = false;
+let sixteenthCounter = 0;
 
 const euclideanPatternGenerators = [];
 let activeGenerators = Array(8).fill(false);
@@ -58,7 +58,7 @@ function configureSynthesizers() {
     
     // Kick
     euclideanPatternGenerators[1].parametersById.get('rotation').value = 0;
-    euclideanPatternGenerators[1].parametersById.get('steps').value = 5;
+    euclideanPatternGenerators[1].parametersById.get('steps').value = 4;
     euclideanPatternGenerators[1].parametersById.get('grid').value = 16;
     euclideanPatternGenerators[1].parametersById.get('pitch').value = 36;
     euclideanPatternGenerators[1].parametersById.get('velocity').value = 77;
@@ -151,6 +151,8 @@ function forwardEventToSynthesizer(name, event) {
     }
 }
 
+let synthsReady = false;
+
 export async function createSynthesizers() {
 
     arpPatterns = await fetch(arpeggiosURL);
@@ -179,6 +181,8 @@ export async function createSynthesizers() {
     [arpSynth] = await createRNBODevice(pafferDeviceURL, audioContext);
     namedSynths['arp'] = arpSynth;
     [padChordsSynth] = await createRNBODevice(padChordsDeviceURL, audioContext);
+    let resetEvent = new RNBO.MessageEvent(RNBO.TimeNow, "in3", -1);
+    padChordsSynth.scheduleEvent(resetEvent);
 
     for (let i = 0; i < 8; i++ ) {
         const [euclideanPatternGenerator] = await createRNBODevice(euclideanPatternGeneratorURL, audioContext);
@@ -205,7 +209,9 @@ export async function createSynthesizers() {
         forwardEventToSynthesizer('arp', event);
     });
     padChordsSynth.midiEvent.subscribe((event) => {
-        forwardEventToSynthesizer('pad', event);
+        if (active) {
+            forwardEventToSynthesizer('pad', event);
+        }
     });
     // kickPatternGenerator.midiEvent.subscribe((event) => {
     //     drumSynth.scheduleEvent(event);
@@ -220,6 +226,8 @@ export async function createSynthesizers() {
     arpSynth.node.connect(arpGain);
     drumSynth.node.connect(drumGain);
     padSynth.node.connect(padGain);
+
+    synthsReady = true;
 }
 
 function setActive(state) {
@@ -232,89 +240,102 @@ function setActive(state) {
 }
 export async function start() {
     await audioContext.resume();
+
+    // I'm lazy, just wait if the synths aren't ready yet
+    if (!synthsReady) {
+        await new Promise((resolve) => {setTimeout(resolve, 1000)});
+    }
+
     Tone.Transport.swing = 0;
     Tone.Transport.bpm.value = 120;
 
-    console.log('Start called - Transport state:', Tone.Transport.state);
-    console.log('Loop exists:', !!loop);
-    console.log('Loop state:', loop ? loop.state : 'no loop');
-
-    let lastTime = 0;
-
-    if (!loop) {
-        console.log('Creating new loop');
-        loop = new Tone.Loop((time) => {
-            console.log('Loop callback triggered at time:', time); // Add this to see if callback fires
-            
-            const bartime = Tone.Time(time).toBarsBeatsSixteenths();
-            const [bars, beats, sixteenths] = bartime.split(':').map(Number);
-            transportTime = bars * 16 + beats * 4 + sixteenths;
-            const nextQuantizedTime = Math.ceil(audioContext.currentTime * 8) * 125;
-
-            if (padChordsSynth && padSynth) {
-                const maxFormattedTime = [ bars, beats + 1, sixteenths * 120 ];
-                const event = new RNBO.MessageEvent(nextQuantizedTime, "in1", maxFormattedTime);
-                padChordsSynth.scheduleEvent(event);
-                kickPatternGenerator.scheduleEvent(event);
-                clickPatternGenerator.scheduleEvent(event);
-
-                euclideanPatternGenerators.forEach((generator) => {
-                    generator.scheduleEvent(event);
-                });
-            }
-
-            if (arpSynth) {
-                let arpEvents = [];
-                if (subscribers["transport"]) {
-                    subscribers["transport"].forEach((callback) => {
-                        arpEvents = arpEvents.concat(callback(transportTime, nextQuantizedTime));
-                    });
-                }
-
-                arpEvents.forEach((event) => {
-                    arpSynth.scheduleEvent(event);
-                });
-            }
-        }, '16n');
-    }
-
-    // Try stopping the loop first if it's already started
-    if (loop.state === 'started') {
-        console.log('Loop was already started, stopping it first');
-        loop.stop();
-    }
-
-    Tone.Transport.position = 0;
-    console.log('Starting loop...');
-    loop.start('0:0:0');
-    console.log('Loop state after start:', loop.state);
+    Tone.Transport.stop();
+    Tone.Transport.cancel(); // Clear any scheduled events
+    Tone.Transport.seconds = 0;
+    sixteenthCounter = 0;
     
-    console.log('Starting transport...');
-    Tone.Transport.start('0:0:0');
+    Tone.Transport.start();
     console.log('Transport state after start:', Tone.Transport.state);
+    let timeOffset = Tone.getContext().currentTime;
+    let rnboTimeZero = 0;
+
+    Tone.Transport.scheduleRepeat((time) => {
+
+        if (!active) return;
+
+        if (sixteenthCounter === 0) {
+            rnboTimeZero = audioContext.currentTime;
+
+            let resetEvent = new RNBO.MessageEvent(RNBO.TimeNow, "in3", -1);
+            padChordsSynth.scheduleEvent(resetEvent);
+        }
+
+        // const currentTransportTime = Tone.getTransport().position;
+
+        // console.log('Loop callback triggered at time:', time); // Add this to see if callback fires
+        // console.log('Transport time:', currentTransportTime); // Add this to see if callback fires
+
+        // const bartime = Tone.Time(currentTransportTime).toBarsBeatsSixteenths();
+        // const [bars, beats, sixteenths] = bartime.split(':').map(Number);
+        // transportTime = bars * 16 + beats * 4 + sixteenths;
+
+        transportTime = Math.floor((time - timeOffset) * 4 * Tone.Transport.bpm.value / 60); // Convert time to sixteenth notes;
+
+        // transportTime = sixteenthCounter; // so annoying but this seems to be the best way to get accurate timing
+
+        const bars = Math.floor(transportTime / 16);
+        const beats = Math.floor((transportTime % 16) / 4);
+        const sixteenths = transportTime % 4;
+        const sixteenthsPerSecond = Tone.Transport.bpm.value / 60 * 4; // 4 sixteenths per beat
+        let nextQuantizedTime = (rnboTimeZero + (transportTime / sixteenthsPerSecond)) * 1000 + 50; // Convert to seconds (16th note = 62.5ms)
+
+        if (padChordsSynth && padSynth) {
+            const maxFormattedTime = [ bars, beats + 1, sixteenths * 120 ];
+            const event = new RNBO.MessageEvent(nextQuantizedTime, "in1", maxFormattedTime);
+            padChordsSynth.scheduleEvent(event);
+            kickPatternGenerator.scheduleEvent(event);
+            clickPatternGenerator.scheduleEvent(event);
+
+            euclideanPatternGenerators.forEach((generator) => {
+                generator.scheduleEvent(event);
+            });
+        } else {
+            console.log("no pad synth");
+        }
+
+        if (arpSynth) {
+            let arpEvents = [];
+            if (subscribers["transport"]) {
+                subscribers["transport"].forEach((callback) => {
+                    arpEvents = arpEvents.concat(callback(transportTime, nextQuantizedTime));
+                });
+            }
+
+            arpEvents.forEach((event) => {
+                arpSynth.scheduleEvent(event);
+            });
+        }
+
+        sixteenthCounter++;
+    }, '16n', 0);
     
     setActive(true);
 }
 
 export function stop() {
-    console.log('Stop called - Transport state:', Tone.Transport.state);
-    console.log('Loop state before stop:', loop ? loop.state : 'no loop');
     
-    if (loop) {
-        loop.stop();
-        console.log('Loop state after stop:', loop.state);
-    }
-    
-    Tone.Transport.pause();
-    console.log('Transport state after pause:', Tone.Transport.state);
+    Tone.Transport.stop();
+    Tone.Transport.cancel(); // Clear any scheduled events
     
     for (let i = 1; i < 128; i++) {
         let noteOffMessage = [ 128, i, 0 ];
-        let noteOffEvent = new RNBO.MIDIEvent(RNBO.TimeNow, 0, noteOffMessage);
+        let noteOffEvent = new RNBO.MIDIEvent(RNBO.TimeNow + 100, 0, noteOffMessage);
         drumSynth.scheduleEvent(noteOffEvent);
-        arpSynth.scheduleEvent(noteOffEvent); 
+        arpSynth.scheduleEvent(noteOffEvent);
         padSynth.scheduleEvent(noteOffEvent);
     }
+    let resetEvent = new RNBO.MessageEvent(RNBO.TimeNow, "in3", -1);
+    padChordsSynth.scheduleEvent(resetEvent);
     setActive(false);
 }
 
@@ -330,7 +351,7 @@ export function mouseToPad(px, py) {
 
 export function createArpEvents(pitchIndex, velocity, nextQuantizedTime) {
     let events = [];
-    const pitch = scaleNotes[pitchIndex];
+    const pitch = scaleNotes[pitchIndex % scaleNotes.length]; // Ensure pitch is within the scale
     let midiChannel = 0;
     let midiPort = 0;
 
