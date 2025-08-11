@@ -24,6 +24,8 @@ let namedSynths = {};
 let scaleNotes = [69, 71, 72, 76, 77, 81, 83, 84, 88, 89];
 let quantizedNoteEvents = [];
 let transportTime = 0;
+let loop = null;
+let active = false;
 
 const euclideanPatternGenerators = [];
 let activeGenerators = Array(8).fill(false);
@@ -220,52 +222,100 @@ export async function createSynthesizers() {
     padSynth.node.connect(padGain);
 }
 
+function setActive(state) {
+    active = state;
+    if (subscribers['state']) {
+        subscribers['state'].forEach((callback) => {
+            callback(active);
+        });
+    }
+}
 export async function start() {
     await audioContext.resume();
+    Tone.Transport.swing = 0;
+    Tone.Transport.bpm.value = 120;
 
-    Tone.getTransport().swing = 0;
-    Tone.getTransport().bpm.value = 120; // Set BPM
+    console.log('Start called - Transport state:', Tone.Transport.state);
+    console.log('Loop exists:', !!loop);
+    console.log('Loop state:', loop ? loop.state : 'no loop');
 
     let lastTime = 0;
 
-    const loop = new Tone.Loop((time) => {
-        const bartime = Tone.Time(time).toBarsBeatsSixteenths();
-        const [bars, beats, sixteenths] = bartime.split(':').map(Number);
-        transportTime = bars * 16 + beats * 4 + sixteenths;
-        const nextQuantizedTime = Math.ceil(audioContext.currentTime * 8) * 125;
+    if (!loop) {
+        console.log('Creating new loop');
+        loop = new Tone.Loop((time) => {
+            console.log('Loop callback triggered at time:', time); // Add this to see if callback fires
+            
+            const bartime = Tone.Time(time).toBarsBeatsSixteenths();
+            const [bars, beats, sixteenths] = bartime.split(':').map(Number);
+            transportTime = bars * 16 + beats * 4 + sixteenths;
+            const nextQuantizedTime = Math.ceil(audioContext.currentTime * 8) * 125;
 
-        // console.log(time - lastTime);
-        // lastTime = time;
+            if (padChordsSynth && padSynth) {
+                const maxFormattedTime = [ bars, beats + 1, sixteenths * 120 ];
+                const event = new RNBO.MessageEvent(nextQuantizedTime, "in1", maxFormattedTime);
+                padChordsSynth.scheduleEvent(event);
+                kickPatternGenerator.scheduleEvent(event);
+                clickPatternGenerator.scheduleEvent(event);
 
-        if (padChordsSynth && padSynth) {
-            const maxFormattedTime = [ bars, beats + 1, sixteenths * 120 ];
-            const event = new RNBO.MessageEvent(nextQuantizedTime, "in1", maxFormattedTime);
-            padChordsSynth.scheduleEvent(event);
-            kickPatternGenerator.scheduleEvent(event);
-            clickPatternGenerator.scheduleEvent(event);
-            // arpPatternGenerator.scheduleEvent(event);
-
-            euclideanPatternGenerators.forEach((generator) => {
-                generator.scheduleEvent(event);
-            });
-        }
-
-        if (arpSynth) {
-            let arpEvents = [];
-            if (subscribers["transport"]) {
-                subscribers["transport"].forEach((callback) => {
-                    arpEvents = arpEvents.concat(callback(transportTime, nextQuantizedTime));
+                euclideanPatternGenerators.forEach((generator) => {
+                    generator.scheduleEvent(event);
                 });
             }
 
-            arpEvents.forEach((event) => {
-                arpSynth.scheduleEvent(event);
-            });
-        }
-    }, '16n');
+            if (arpSynth) {
+                let arpEvents = [];
+                if (subscribers["transport"]) {
+                    subscribers["transport"].forEach((callback) => {
+                        arpEvents = arpEvents.concat(callback(transportTime, nextQuantizedTime));
+                    });
+                }
 
+                arpEvents.forEach((event) => {
+                    arpSynth.scheduleEvent(event);
+                });
+            }
+        }, '16n');
+    }
+
+    // Try stopping the loop first if it's already started
+    if (loop.state === 'started') {
+        console.log('Loop was already started, stopping it first');
+        loop.stop();
+    }
+
+    Tone.Transport.position = 0;
+    console.log('Starting loop...');
     loop.start('0:0:0');
-    Tone.getTransport().start('0:0:0');
+    console.log('Loop state after start:', loop.state);
+    
+    console.log('Starting transport...');
+    Tone.Transport.start('0:0:0');
+    console.log('Transport state after start:', Tone.Transport.state);
+    
+    setActive(true);
+}
+
+export function stop() {
+    console.log('Stop called - Transport state:', Tone.Transport.state);
+    console.log('Loop state before stop:', loop ? loop.state : 'no loop');
+    
+    if (loop) {
+        loop.stop();
+        console.log('Loop state after stop:', loop.state);
+    }
+    
+    Tone.Transport.pause();
+    console.log('Transport state after pause:', Tone.Transport.state);
+    
+    for (let i = 1; i < 128; i++) {
+        let noteOffMessage = [ 128, i, 0 ];
+        let noteOffEvent = new RNBO.MIDIEvent(RNBO.TimeNow, 0, noteOffMessage);
+        drumSynth.scheduleEvent(noteOffEvent);
+        arpSynth.scheduleEvent(noteOffEvent); 
+        padSynth.scheduleEvent(noteOffEvent);
+    }
+    setActive(false);
 }
 
 export function mouseToPad(px, py) {
@@ -275,25 +325,6 @@ export function mouseToPad(px, py) {
     if (!!padSynth && !!arpSynth) {
         padSynth.parametersById.get('mto-center-freq').value = fx;
         arpSynth.parametersById.get('mto-center-freq').value = fy;
-    }
-}
-
-export function stop() {
-    Tone.getTransport().stop();
-    Tone.getTransport().cancel();
-}
-
-export function resume() {
-    if (audioContext.state !== 'running') {
-        start();
-    }
-}
-
-export function togglePlayState() {
-    if (Tone.getTransport().state === 'started') {
-        stop();
-    } else {
-        start();
     }
 }
 
@@ -364,4 +395,8 @@ export function toggleActiveGenerator(index) {
 
 export function getTransportTime() {
     return transportTime;
+}
+
+export function getActive() {
+    return active;
 }

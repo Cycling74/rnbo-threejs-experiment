@@ -12,7 +12,10 @@ export const skyFragmentShader = `
     uniform vec2 u_mouse;
     uniform float u_time;
     uniform vec2 u_resolution;
-    
+    uniform vec3 u_center_color;
+    uniform vec3 u_middle_color;
+    uniform vec3 u_edge_color;
+
     varying vec2 vUv;
     
     void main() {
@@ -21,10 +24,10 @@ export const skyFragmentShader = `
         float dist = distance(vUv, mousePos);
         
         // Create gradient colors - you can customize these
-        vec3 centerColor = vec3(0.6, 0.8, 1.0); // Light blue
-        vec3 middleColor = vec3(0.5, 0.7, 1.0); // Sky blue
-        vec3 edgeColor = vec3(0.2, 0.3, 0.6);   // Darker blue
-        
+        vec3 centerColor = u_center_color;
+        vec3 middleColor = u_middle_color;
+        vec3 edgeColor = u_edge_color;
+
         // Add some time-based animation
         float animatedDist = dist + sin(u_time * 0.5) * 0.1;
         

@@ -1,7 +1,10 @@
-import { MountainGreen, makePalette } from './palette.js';
-import { start, togglePlayState, createSynthesizers, mouseToPad, subscribeToSynthesizer, handleKey, resume, toggleActiveGenerator, getTransportTime, createArpEvents } from './synthesizers.js';
-import { skyVertexShader, skyFragmentShader } from './shaders.js';
-import { animateBirds, spawnBirdsAtPosition } from './birds.js';
+import { start, stop, getActive, createSynthesizers, mouseToPad, subscribeToSynthesizer, handleKey, toggleActiveGenerator, getTransportTime, createArpEvents } from './synthesizers.js';
+import { Birds } from './birds.js';
+import { Clouds } from './clouds.js';
+import { Ground } from './ground.js';
+import { Mountains } from './mountains.js';
+import { Sky } from './sky.js';
+import { Sun } from './sun.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -16,67 +19,76 @@ document.body.appendChild(renderer.domElement);
 const mouse = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 
-// Create a ground plane
-const groundGeometry = new THREE.PlaneGeometry(1000, 150);
-const groundMaterial = new THREE.MeshBasicMaterial({ color: 0xa68346, side: THREE.DoubleSide });
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = Math.PI / 2; // Rotate to horizontal
-ground.position.z = -cameraDistance; // Position it behind the camera
-scene.add(ground);
-
-// Create sky with custom shader material
-const skyGeometry = new THREE.PlaneGeometry(1000, 1000);
-const skyMaterial = new THREE.ShaderMaterial({
-    vertexShader: skyVertexShader,
-    fragmentShader: skyFragmentShader,
-    uniforms: {
-        u_mouse: { value: new THREE.Vector2(0.0, 0.0) },
-        u_time: { value: 0.0 },
-        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
-    },
-    side: THREE.DoubleSide
-});
-const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-sky.position.z = -300; // Position it way in the background
-scene.add(sky);
-
-// Add a cloud by aggregating a few overlapping spheres
-const cloudGeometry = new THREE.SphereGeometry(1, 32, 32);
-const cloudMaterials = [
-    new THREE.MeshBasicMaterial({ color: 0xffeeff, transparent: true, opacity: 0.8 }),
-    new THREE.MeshBasicMaterial({ color: 0xf0e0f0, transparent: true, opacity: 0.8 }),
-    new THREE.MeshBasicMaterial({ color: 0xeeeeff, transparent: true, opacity: 0.8 })
-];
-const cloudDistance = [-200, -50];
-let clouds = [];
-
-// Create materials for the mountains
-const mountainPalette = makePalette(...MountainGreen);
-const mountainStops = 8;
-const mountainColors = [];
-const mountainSaturation = [];
-for (let i = 0; i < mountainStops; i++) {
-    const t = i / (mountainStops - 1);
-    mountainColors.push(new THREE.Color(mountainPalette(t)));
-    mountainSaturation.push(0.0);
-}
-const mountainMaterials = [];
-for (let i = 0; i < mountainStops; i++) {
-    const color = {};
-    mountainColors[i].getHSL(color);
-    const materialColor = new THREE.Color();
-    materialColor.setHSL(color.h, mountainSaturation[i], color.l);
-    mountainMaterials.push(new THREE.MeshBasicMaterial({ color: materialColor }));
-}
-let mountains = [];
-let hoveredMountain = null;
-
-// Birds
-let birdFlocks = [];
-
 // Position camera
 camera.position.y = 20;
 camera.position.z = cameraDistance;
+
+const drawables = [];
+
+const sky = new Sky();
+sky.addToScene(scene);
+drawables.push(sky);
+
+const ground = new Ground(cameraDistance);
+ground.addToScene(scene);
+drawables.push(ground);
+
+const clouds = new Clouds(camera);
+clouds.addToScene(scene);
+drawables.push(clouds);
+
+const sun = new Sun();
+sun.addToScene(scene);
+drawables.push(sun);
+
+const mountains = new Mountains(camera);
+mountains.addToScene(scene);
+drawables.push(mountains);
+
+const birds = new Birds();
+birds.addToScene(scene);
+drawables.push(birds);
+
+ground.addEventListener('pointermove', (event) => {
+    ground.hovered = true;
+});
+
+mountains.addEventListener('pointermove', (event) => {
+    const { mouse, intersects } = event;
+    if (intersects.length > 0) {
+        const mountain = intersects[0].object;
+        mountains.hoveredMountain = mountain;
+    }
+});
+
+mountains.addEventListener('pointerdown', (event) => {
+    const { mouse, intersects } = event;
+    if (intersects.length > 0) {
+        const mountain = intersects[0].object;
+        const row = mountain.userData.row;
+        toggleActiveGenerator(row);
+    }
+});
+
+sky.addEventListener('pointermove', (event) => {
+    sky.hovered = true;
+});
+
+sky.addEventListener('pointerdown', (event) => {
+    const { position } = event;
+    const userData = {
+        transportIndex: getTransportTime() % 16,
+    }
+
+    if (getActive()) {
+        const flock = birds.spawnBirdsAtPosition(scene, position, userData);
+    }
+});
+
+sun.addEventListener('pointerdown', (event) => {
+    stop();
+});
+    
 
 // Animation loop
 function animate() {
@@ -87,161 +99,19 @@ function animate() {
     const deltaTime = currentTime - (animate.lastTime || currentTime);
     animate.lastTime = currentTime;
 
-    const newClouds = [];
-
-    clouds.forEach((cloudGroup) => {
-        // slowly drift the clouds off to the left
-        cloudGroup.position.x -= 0.02;
-        const xrange = Math.abs(camera.position.z - cloudGroup.position.z) * Math.tan(75 * Math.PI / 180) - 150;
-        let offscreenX = -xrange; // Offscreen position to the left
-
-        // if the cloud is too far left, remove it from the scene and spawn a new cloud group
-        if (cloudGroup.position.x < offscreenX) {
-            const newCloudGroup = createCloudGroup();
-            newCloudGroup.position.x = (xrange) * (Math.random() - 0.5) + xrange; // Random X position, but offscreen
-            newCloudGroup.position.y = Math.random() * 80 + 15; // Random Y position
-            newCloudGroup.position.z = Math.random() * (cloudDistance[1] - cloudDistance[0]) + cloudDistance[0];
-            scene.add(newCloudGroup);
-            scene.remove(cloudGroup);
-            newClouds.push(newCloudGroup);
-        }
+    drawables.forEach((drawable) => {
+        drawable.animate(deltaTime, camera, scene);
     });
 
-    clouds.push(...newClouds);
-    clouds = clouds.filter((cloudGroup) => {
-        const xrange = Math.abs(camera.position.z - cloudGroup.position.z) * Math.tan(75 * Math.PI / 180) - 150;
-        let offscreenX = -xrange; // Offscreen position to the left
-        return cloudGroup.position.x > offscreenX; // Keep only clouds that are still visible
-    });
+    const scale = sun.position.y > 0 ? 0.001 : (Math.pow(Math.abs(sun.position.y / 50), 2) + 1) * 0.001;
 
-    // Update time uniform for animation
-    skyMaterial.uniforms.u_time.value = performance.now() * 0.001;
-
-    mountainSaturation.forEach((saturation, index) => {
-        const color = mountainColors[index];
-        const currentColor = {};
-        color.getHSL(currentColor);
-        if (hoveredMountain && hoveredMountain.object.userData.row === index) {
-            saturation += 0.05; // Increase saturation on hover
-        } else if (saturation > 0) {
-            saturation -= 0.05;
-        }
-        saturation = Math.max(0, Math.min(1, saturation)); // Clamp saturation between 0 and 1
-        const materialColor = mountainMaterials[index].color;
-        materialColor.setHSL(currentColor.h, saturation, currentColor.l);
-        mountainMaterials[index].color.set(materialColor);
-        mountainSaturation[index] = saturation; // Update saturation
-    });
-
-    animateBirds(scene, birdFlocks, deltaTime);
+    sky.sunPosition = sun.position.clone().multiplyScalar(scale); // Update sky sun position
 
     renderer.render(scene, camera);
 }
 
-function createMountainMesh(material, userData = {}) {
-    const x = 0, y = 0;
-
-    const mountain = new THREE.Shape();
-
-    mountain.moveTo( x - 5, y );
-    mountain.lineTo( x , y + 5 );
-    mountain.lineTo( x + 5, y );
-    mountain.closePath();
-
-    const geometry = new THREE.ShapeGeometry( mountain );
-    const mesh = new THREE.Mesh( geometry, material ) ;
-    mesh.name = `mountain-${userData.row || 0}`;
-
-    mesh.userData = userData;
-
-    scene.add( mesh );
-
-    return mesh;
-}
-
-function createCloudGroup() {
-    const group = new THREE.Group();
-    const cloudCount = 1; // Number of clouds in the group
-    const cloudSpacing = 3; // Spacing between clouds
-    const widthRange = 5; // Width range for clouds
-    const cloudScale = 10.0;
-    const cloudMaterial = cloudMaterials[Math.floor(Math.random() * cloudMaterials.length)];
-
-    for (let i = 0; i < cloudCount; i++) {
-        const cloudlet = new THREE.Mesh(cloudGeometry, cloudMaterial);
-        cloudlet.scale.set(
-            (1 + Math.random() * widthRange * ((i + 1) / cloudCount)) * cloudScale,
-            (1 + Math.random()) * cloudScale * 0.5,
-            (1 + Math.random()) * cloudScale * 0.5
-        ); // Random scale
-        cloudlet.position.set(
-            (Math.random() * cloudSpacing * 2) * cloudScale,
-            (Math.random() * cloudSpacing) * cloudScale,
-            0
-        );
-        group.add(cloudlet);
-    }
-
-    return group;
-}
-
-// Debug function to visualize the raycaster
-function addRayVisualization() {
-    // Create a line to show the ray direction
-    const rayGeometry = new THREE.BufferGeometry();
-    const rayMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-    const rayLine = new THREE.Line(rayGeometry, rayMaterial);
-    scene.add(rayLine);
-    
-    // Update ray visualization in your mouse move handler
-    function updateRayVisualization() {
-        const rayDirection = raycaster.ray.direction.clone();
-        const rayOrigin = raycaster.ray.origin.clone();
-        
-        // Create points for the ray line
-        const points = [
-            rayOrigin,
-            rayOrigin.clone().add(rayDirection.multiplyScalar(500))
-        ];
-        
-        rayGeometry.setFromPoints(points);
-    }
-    
-    return updateRayVisualization;
-}
-
-const updateRayVisualization = addRayVisualization();
-
-// Add a bunch of mountains
-for (let i = 0; i < 1000; i++) {
-    const t = Math.random(); // Random value for color palette
-    const row = Math.floor((1 - t) * mountainStops);
-    const distance = -100 * t + 11; // Random distance from the origin
-    const mountainMaterial = mountainMaterials[Math.floor((1 - t) * (mountainStops))];
-    const mountainMesh = createMountainMesh(mountainMaterial, { type: 'mountain', row: row });
-    const xrange = Math.abs(camera.position.z - distance) * Math.tan(75 * Math.PI / 180) - 25;
-    mountainMesh.position.x = 2 * (xrange) * (Math.random() - 0.5); // Random X position
-    mountainMesh.position.y = 0;
-    mountainMesh.position.z = distance; // Random Z position
-    mountainMesh.scale.set(1.0, (Math.abs(distance) / 100) + 1.0, 1.0); // Scale down the mountains
-    scene.add(mountainMesh);
-    mountains.push(mountainMesh);
-}
-
-// Add a bunch of clouds
-for (let i = 0; i < 15; i++) {
-    const cloudGroup = createCloudGroup();
-    const cloudZ = Math.random() * (cloudDistance[1] - cloudDistance[0]) + cloudDistance[0];
-    const xrange = Math.abs(camera.position.z - cloudZ) * Math.tan(75 * Math.PI / 180) - 150;
-    cloudGroup.position.x = (xrange) * (Math.random() - 0.5); // Random X position
-    cloudGroup.position.y = Math.random() * 80 + 15; // Random Y position
-    cloudGroup.position.z = cloudZ;
-    scene.add(cloudGroup);
-    clouds.push(cloudGroup);
-}
-
 // Mouse move handler
-function onMouseMove(event) {
+window.addEventListener('pointermove', (event) => {
     // Convert mouse coordinates to normalized device coordinates (-1 to +1)
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -249,43 +119,67 @@ function onMouseMove(event) {
     mouseToPad(mouse.x, mouse.y);
     
     // Update shader uniform
-    skyMaterial.uniforms.u_mouse.value.set(mouse.x, mouse.y);
+    // skyMaterial.uniforms.u_mouse.value.set(mouse.x, mouse.y);
 
     // Mouse intersections
     raycaster.setFromCamera(mouse, camera);
 
-    const intersects = raycaster.intersectObjects(mountains);
-    if (intersects.length > 0) {
-        hoveredMountain = intersects[0];
-        console.log(`Hovered mountain: ${hoveredMountain.object.name}, Row: ${hoveredMountain.object.userData.row}`);
-    } else {
-        hoveredMountain = null;
-    }
-}
+    let handlingEvent = null;
 
-window.addEventListener('mousemove', onMouseMove);
+    drawables.slice().reverse().forEach((drawable) => {
+        if (handlingEvent) return; // Stop if an event has already been handled
+        const event = drawable.bubbleEvent({
+            type: 'pointermove',
+            mouse,
+            raycaster
+        });
+        if (event) {
+            handlingEvent = event;
+        }
+    });
+
+    if (!handlingEvent || handlingEvent?.intersects[0]?.object?.userData?.type !== 'mountain') {
+        mountains.hoveredMountain = null; // Reset hovered mountain if not hovering
+    }
+
+    if (!handlingEvent || handlingEvent?.intersects[0]?.object?.userData?.type !== 'sky') {
+        sky.hovered = false; // Reset sky hover state if not hovering
+    }
+
+    if (!handlingEvent || handlingEvent?.intersects[0]?.object?.userData?.type !== 'ground') {
+        ground.hovered = false; // Reset ground hover state if not hovering
+    }
+
+        if (!handlingEvent || handlingEvent?.intersects[0]?.object?.userData?.type !== 'sun') {
+        sun.hovered = false; // Reset sun hover state if not hovering
+    }
+});
 
 // Click handler
-window.addEventListener('pointerdown', (event) => {
-    resume();
-    if (hoveredMountain) {
-        const row = hoveredMountain.object.userData.row;
-        console.log(`Clicked on mountain at row: ${row}`);
-        toggleActiveGenerator(row);
-    } else {
-           // Convert mouse coordinates to normalized device coordinates (-1 to +1)
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        
-        raycaster.setFromCamera(mouse, camera);
+window.addEventListener('pointerdown', async (event) => {
+    // Convert mouse coordinates to normalized device coordinates (-1 to +1)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
 
-        const skyIntersects = raycaster.intersectObject(sky);
+    let handlingEvent = null;
 
-        if (skyIntersects.length > 0) {
-            const clickPosition = skyIntersects[0].point;
-            const flock = spawnBirdsAtPosition(scene, birdFlocks, clickPosition);
-            flock.userData.transportIndex = getTransportTime() % 16;
-        }
+    if (getActive()) {
+        drawables.slice().reverse().forEach((drawable) => {
+            if (handlingEvent) return; // Stop if an event has already been handled
+            const event = drawable.bubbleEvent({
+                type: 'pointerdown',
+                mouse,
+                raycaster
+            });
+            if (event) {
+                handlingEvent = event;
+            }
+        });
+    }
+
+    if (!handlingEvent) {
+        await start();  
     }
 });
 
@@ -304,13 +198,13 @@ function handleKeyEvent(event, direction) {
     }
 }
 
-window.addEventListener('keydown', (event) => {
-    handleKeyEvent(event, 1);
-});
+// window.addEventListener('keydown', (event) => {
+//     handleKeyEvent(event, 1);
+// });
 
-window.addEventListener('keyup', (event) => {
-    handleKeyEvent(event, 0);
-});
+// window.addEventListener('keyup', (event) => {
+//     handleKeyEvent(event, 0);
+// });
 
 // Start animation
 animate();
@@ -326,18 +220,30 @@ createSynthesizers().then(() => {
 
         if (mountainPitches.includes(pitch)) {
             const row = mountainPitches.indexOf(pitch);
-            mountainSaturation[row] = 1.0; // Set saturation for the corresponding mountain
+            mountains.setSaturation(row, 1.0); // Set saturation for the corresponding mountain
         }
     });
+});
 
-    subscribeToSynthesizer('transport', (time, nextQuantizedTime) => {
-        let events = [];
-        birdFlocks.forEach((flock) => {
-            if (flock.userData.transportIndex === time % 16) {
-                flock.userData.highlight = 1.0; // Highlight the flock
-                events.push(...createArpEvents(flock.userData.noteIndex, 65, nextQuantizedTime));
-            }
-        });
-        return events;
-    }); 
+subscribeToSynthesizer('transport', (time, nextQuantizedTime) => {
+    let events = [];
+    // birdFlocks.forEach((flock) => {
+    //     if (flock.userData.transportIndex === time % 16) {
+    //         flock.userData.highlight = 1.0; // Highlight the flock
+    //         events.push(...createArpEvents(flock.userData.noteIndex, 65, nextQuantizedTime));
+    //     }
+    // });
+    return events;
+}); 
+
+subscribeToSynthesizer('state', (state) => {
+    if (state) {
+        sun.active = true;
+        ground.active = true;
+        sky.active = true;
+    } else {
+        sun.active = false;
+        ground.active = false;
+        sky.active = false;
+    }
 });
