@@ -10,11 +10,29 @@ export class Mountains extends Drawable {
     mountainSaturation = [];
     _hoveredMountain = null;
 
+    _mousePosition = new THREE.Vector2(0, 0);
+
     get hoveredMountain() {
         return this._hoveredMountain;
     }
     set hoveredMountain(mountain) {
         this._hoveredMountain = mountain;
+    }
+
+    set mousePosition(position) {
+        this._mousePosition.copy(position);   
+
+        this.mountains.forEach(mountain => {
+            let geometry = mountain.geometry;
+            let position = geometry.attributes.position;
+            let positions = position.array;
+            let px = (positions[0] + positions[6]) / 2;
+            px = px + this._mousePosition.x * 2;
+            let py = positions[1] + 5;
+            py = py + this._mousePosition.y;
+            position.setXYZ(1, px, py, positions[5]);
+            position.needsUpdate = true; // Mark the position attribute as needing an update
+        });
     }
     
     constructor(camera) {

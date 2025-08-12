@@ -115,6 +115,7 @@ window.addEventListener('pointermove', (event) => {
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     mouseToPad(mouse.x, mouse.y);
+    mountains.mousePosition = mouse;
     
     // Update shader uniform
     // skyMaterial.uniforms.u_mouse.value.set(mouse.x, mouse.y);

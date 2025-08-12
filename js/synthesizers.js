@@ -345,6 +345,7 @@ export function mouseToPad(px, py) {
 
     if (!!padSynth && !!arpSynth) {
         padSynth.parametersById.get('mto-center-freq').value = fx;
+        padSynth.parametersById.get('bandwidth').value = fy;
         arpSynth.parametersById.get('mto-center-freq').value = fy;
     }
 }
