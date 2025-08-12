@@ -56,12 +56,12 @@ function configureSynthesizers() {
     euclideanPatternGenerators[0].parametersById.get('pitch').value = 38;
     euclideanPatternGenerators[0].parametersById.get('velocity').value = 76;
     
-    // Kick
-    euclideanPatternGenerators[1].parametersById.get('rotation').value = 0;
-    euclideanPatternGenerators[1].parametersById.get('steps').value = 4;
-    euclideanPatternGenerators[1].parametersById.get('grid').value = 16;
-    euclideanPatternGenerators[1].parametersById.get('pitch').value = 36;
-    euclideanPatternGenerators[1].parametersById.get('velocity').value = 77;
+    // Something
+    euclideanPatternGenerators[7].parametersById.get('rotation').value = 0;
+    euclideanPatternGenerators[7].parametersById.get('steps').value = 5;
+    euclideanPatternGenerators[7].parametersById.get('grid').value = 16;
+    euclideanPatternGenerators[7].parametersById.get('pitch').value = 36;
+    euclideanPatternGenerators[7].parametersById.get('velocity').value = 77;
 
     // Ping
     euclideanPatternGenerators[2].parametersById.get('rotation').value = 1;
@@ -70,28 +70,28 @@ function configureSynthesizers() {
     euclideanPatternGenerators[2].parametersById.get('pitch').value = 40;
     euclideanPatternGenerators[2].parametersById.get('velocity').value = 120;
 
-    // Kick
+    // Something else
     euclideanPatternGenerators[3].parametersById.get('rotation').value = 2;
     euclideanPatternGenerators[3].parametersById.get('steps').value = 7;
     euclideanPatternGenerators[3].parametersById.get('grid').value = 16;
     euclideanPatternGenerators[3].parametersById.get('pitch').value = 41;
     euclideanPatternGenerators[3].parametersById.get('velocity').value = 60;
 
-    // Kick
+    // Percussion 1
     euclideanPatternGenerators[4].parametersById.get('rotation').value = 3;
     euclideanPatternGenerators[4].parametersById.get('steps').value = 6;
     euclideanPatternGenerators[4].parametersById.get('grid').value = 16;
     euclideanPatternGenerators[4].parametersById.get('pitch').value = 43;
     euclideanPatternGenerators[4].parametersById.get('velocity').value = 65;
 
-    // Kick
+    // Percussion 2
     euclideanPatternGenerators[5].parametersById.get('rotation').value = 2;
     euclideanPatternGenerators[5].parametersById.get('steps').value = 4;
     euclideanPatternGenerators[5].parametersById.get('grid').value = 16;
     euclideanPatternGenerators[5].parametersById.get('pitch').value = 45;
     euclideanPatternGenerators[5].parametersById.get('velocity').value = 60;
 
-    // Kick
+    // Percussion 3
     euclideanPatternGenerators[6].parametersById.get('rotation').value = 0;
     euclideanPatternGenerators[6].parametersById.get('steps').value = 4;
     euclideanPatternGenerators[6].parametersById.get('grid').value = 16;
@@ -99,11 +99,11 @@ function configureSynthesizers() {
     euclideanPatternGenerators[6].parametersById.get('velocity').value = 98;
 
     // Kick
-    euclideanPatternGenerators[7].parametersById.get('rotation').value = 1;
-    euclideanPatternGenerators[7].parametersById.get('steps').value = 5;
-    euclideanPatternGenerators[7].parametersById.get('grid').value = 16;
-    euclideanPatternGenerators[7].parametersById.get('pitch').value = 48;
-    euclideanPatternGenerators[7].parametersById.get('velocity').value = 94;
+    euclideanPatternGenerators[1].parametersById.get('rotation').value = 1;
+    euclideanPatternGenerators[1].parametersById.get('steps').value = 5;
+    euclideanPatternGenerators[1].parametersById.get('grid').value = 16;
+    euclideanPatternGenerators[1].parametersById.get('pitch').value = 48;
+    euclideanPatternGenerators[1].parametersById.get('velocity').value = 94;
 
     padSynth.parametersById.get('mto-center-freq').value = 55;
     padSynth.parametersById.get('bandwidth').value = 69;

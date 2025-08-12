@@ -222,7 +222,7 @@ createSynthesizers().then(() => {
     subscribeToSynthesizer('drums', (event) => {
         const pitch = event.data[1];
         const velocity = event.data[2];
-        const mountainPitches = [38, 36, 40, 41, 43, 45, 47, 48]; // Kick and click pitches
+        const mountainPitches = [38, 48, 40, 41, 43, 45, 47, 36]; // Kick and click pitches
         if (velocity === 0) 
             return; // Ignore note-off events`
 
